@@ -127,12 +127,12 @@ RESET:
         lda     #$FF
         ldx     #>$3C0
         ldy     #<$3C0
-@clear_vram:
+@clear_nametable:
         sta     PPU_DATA
         dey
-        bne     @clear_vram
+        bne     @clear_nametable
         dex
-        bpl     @clear_vram
+        bpl     @clear_nametable
 
         ; PPU アトリビュートテーブル ($23C0-$23FF) を 0 クリア
         lda     #>$23C0
