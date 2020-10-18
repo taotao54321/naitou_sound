@@ -1,0 +1,458 @@
+;=====================================================================
+; 内藤九段将棋秘伝 (FC) sound test
+;=====================================================================
+
+.setcpu "6502"
+
+.define NOT8(value) <~(value)
+
+PPU_CTRL   = $2000
+PPU_MASK   = $2001
+PPU_STATUS = $2002
+PPU_SCROLL = $2005
+PPU_ADDR   = $2006
+PPU_DATA   = $2007
+
+PPU_CTRL_NT0        = %00
+PPU_CTRL_NMI_ENABLE = 1 << 7
+
+PPU_MASK_BG_ENABLE = 1 << 3
+
+APU_SQ0    = $4000
+APU_TRI    = $4008
+APU_DMC    = $4010
+APU_STATUS = $4015
+APU_FRAME  = $4017
+
+APU_SQ_DUTY_EIGHTH      = %00 << 6
+APU_SQ_DUTY_QUARTER     = %01 << 6
+APU_SQ_DUTY_HALF        = %10 << 6
+APU_SQ_DUTY_QUARTER_NEG = %11 << 6
+
+APU_STATUS_SQ0 = 1 << 0
+APU_STATUS_TRI = 1 << 2
+
+APU_FRAME_IRQ_DISABLE = 1 << 6
+APU_FRAME_STEP5       = 1 << 7
+
+CONTROLLER = $4016
+
+
+BUTTON_A = 1 << 7
+BUTTON_B = 1 << 6
+BUTTON_L = 1 << 1
+BUTTON_R = 1 << 0
+
+SOUND_ID_MAX = 5
+
+
+;---------------------------------------------------------------------
+.segment "ZP" : zeropage
+;---------------------------------------------------------------------
+
+tmp: .res 16
+
+ppu_ctrl:     .res 1
+ppu_scroll_x: .res 1
+ppu_scroll_y: .res 1
+
+nmi_done: .res 1
+
+; ABSTUDLR
+input:      .res 1
+input_edge: .res 1      ; 前回何かボタンを押してたら 0
+
+sound_id: .res 1
+
+apu_sq0: .res 4
+apu_status: .res 1
+
+sq0_sound_ptr: .res 2
+
+sound_data_byte: .res 1
+
+sound_length_msb: .res 1
+
+sound_timer_value: .res 2
+
+sq0_octave: .res 1
+
+
+;---------------------------------------------------------------------
+.segment "CODE"
+;---------------------------------------------------------------------
+
+RESET:
+        sei
+        cld
+
+        lda     #APU_FRAME_IRQ_DISABLE
+        sta     APU_FRAME
+
+        ldx     #$FF
+        txs
+
+        lda     #0
+        sta     PPU_CTRL        ; NMI 無効
+        sta     PPU_MASK        ; 描画無効
+        sta     APU_DMC         ; DMC IRQ 無効
+
+        bit     PPU_STATUS
+@wait_vblank_1:
+        bit     PPU_STATUS
+        bpl     @wait_vblank_1
+@wait_vblank_2:
+        bit     PPU_STATUS
+        bpl     @wait_vblank_2
+
+        lda     #0
+        ldx     #0
+@clear_ram:
+        sta     $00,x
+        sta     $0100,x
+        sta     $0200,x
+        sta     $0300,x
+        sta     $0400,x
+        sta     $0500,x
+        sta     $0600,x
+        sta     $0700,x
+        inx
+        bne     @clear_ram
+
+        ; PPU VRAM ($2000-$23FF) を 0 クリア
+        lda     #>$2000
+        sta     PPU_ADDR
+        lda     #<$2000
+        sta     PPU_ADDR
+        ldx     #4
+@clear_vram_outer:
+        ldy     #0
+@clear_vram_inner:
+        sta     PPU_DATA
+        dey
+        bne     @clear_vram_inner
+        dex
+        bne     @clear_vram_outer
+
+        ; PPU パレット設定
+        lda     #>$3F00
+        sta     PPU_ADDR
+        lda     #<$3F00
+        sta     PPU_ADDR
+        lda     #$0F
+        sta     PPU_DATA
+        lda     #$20
+        sta     PPU_DATA
+        lda     #$0F
+        sta     PPU_DATA
+        sta     PPU_DATA
+
+        ; PPU スクロール (0,0)
+        lda     #0
+        sta     ppu_scroll_x
+        sta     PPU_SCROLL
+        sta     ppu_scroll_y
+        sta     PPU_SCROLL
+
+        lda     #PPU_MASK_BG_ENABLE
+        sta     PPU_MASK
+
+        lda     #PPU_CTRL_NT0 | PPU_CTRL_NMI_ENABLE
+        sta     ppu_ctrl
+        sta     PPU_CTRL
+
+@mainloop:
+@wait_nmi:
+        lda     nmi_done
+        beq     @wait_nmi
+        lda     #0
+        sta     nmi_done
+
+        lda     input_edge
+        and     #BUTTON_L
+        beq     @chk_button_R
+        ldx     sound_id
+        dex
+        bpl     @dec_sound_id
+        ldx     #SOUND_ID_MAX
+@dec_sound_id:
+        stx     sound_id
+
+@chk_button_R:
+        lda     input_edge
+        and     #BUTTON_R
+        beq     @chk_button_A
+        ldx     sound_id
+        inx
+        cpx     #SOUND_ID_MAX+1
+        bcc     @inc_sound_id
+        ldx     #0
+@inc_sound_id:
+        stx     sound_id
+
+@chk_button_A:
+        lda     input_edge
+        and     #BUTTON_A
+        beq     @next
+        jsr     PrepareSound
+
+@next:
+        jmp     @mainloop
+
+
+ProceedSounds:
+        lda     apu_status
+        and     #APU_STATUS_SQ0
+        beq     @tri
+        jsr     ProceedSq0
+
+@tri:
+        
+
+@rts:
+        rts
+
+
+ProceedSq0:
+        lda     APU_STATUS
+        and     #APU_STATUS_SQ0
+        bne     @rts
+        jsr     ProcessSq0Data
+@rts:
+        rts
+
+
+ProcessSq0Data:
+@loop:
+        ldy     #0
+        lda     (sq0_sound_ptr),y
+        sta     sound_data_byte
+
+        inc     sq0_sound_ptr
+        bne     @interpret
+        inc     sq0_sound_ptr+1
+
+@interpret:
+        and     #$F0
+
+        cmp     #$90
+        bcc     @play
+        beq     @change_octave
+        cmp     #$B0
+        beq     @stop
+        bcs     @configure
+
+@set_length_bit4:
+        lda     sound_data_byte
+        and     #$F
+        sta     sound_length_msb
+        jmp     @loop
+
+@play:
+        ldy     sound_length_msb
+        beq     @set_length
+        ora     #1 << 7
+@set_length:
+        sta     apu_sq0+3
+
+        lda     sound_data_byte
+        and     #$F
+        ldx     sq0_octave
+        jsr     NoteTimerValue
+
+        lda     sound_timer_value
+        sta     apu_sq0+2
+        lda     sound_timer_value+1
+        and     #4
+        ora     apu_sq0+3
+        sta     apu_sq0+3
+
+        lda     apu_sq0+2
+        sta     APU_SQ0+2
+        lda     apu_sq0+3
+        sta     APU_SQ0+3
+
+        rts
+
+@change_octave:
+        lda     sound_data_byte
+        and     #7
+        sta     sq0_octave
+
+        jmp     @loop
+
+@stop:
+        lda     apu_status
+        and     #NOT8 APU_STATUS_SQ0
+        sta     apu_status
+        sta     APU_STATUS
+
+        rts
+
+; TODO
+@configure:
+        lda     #APU_SQ_DUTY_QUARTER_NEG | 15
+        sta     apu_sq0
+        sta     APU_SQ0
+        lda     #0
+        sta     apu_sq0+1
+        sta     APU_SQ0+1
+
+        jmp     @loop
+
+
+NoteTimerValue:
+        asl
+        tay
+
+        lda     note_timer_values,y
+        sta     sound_timer_value
+        lda     note_timer_values+1,y
+        sta     sound_timer_value+1
+
+@loop:
+        lsr     sound_timer_value+1
+        ror     sound_timer_value
+        dex
+        bne     @loop
+
+        rts
+
+note_timer_values:
+        .word   855     ; C3
+        .word   807     ; C#3
+        .word   762     ; D3
+        .word   719     ; D#3
+        .word   679     ; E3
+        .word   641     ; F3
+        .word   605     ; F#3
+        .word   571     ; G3
+        .word   539     ; G#3
+        .word   508     ; A3
+        .word   480     ; A#3
+        .word   453     ; B3
+        .word   0
+
+
+PrepareSound:
+        lda     sound_id
+        asl
+        tay
+
+        lda     prepare_sound_funcs,y
+        sta     tmp
+        lda     prepare_sound_funcs+1,y
+        sta     tmp+1
+
+        jmp     (tmp)
+
+
+prepare_sound_funcs:
+        .addr   PrepareSound0
+
+
+PrepareSound0:
+        lda     #<sq0_sound_0
+        sta     sq0_sound_ptr
+        lda     #>sq0_sound_0
+        sta     sq0_sound_ptr+1
+
+        lda     apu_status
+        ora     #APU_STATUS_SQ0
+        sta     apu_status
+
+        lda     apu_status
+        sta     APU_STATUS
+
+        rts
+
+
+sq0_sound_0:
+        .byte   (12<<4) | 0
+        .byte   (10<<4) | 0
+        .byte   ( 9<<4) | 2
+        .byte   ( 0<<4) | 2
+        .byte   ( 0<<4) | 4
+        .byte   ( 0<<4) | 6
+        .byte   (11<<4) | 1
+
+
+NMI:
+        pha
+        txa
+        pha
+        tya
+        pha
+
+        lda     ppu_ctrl
+        and     #NOT8 PPU_CTRL_NMI_ENABLE
+        sta     PPU_CTRL
+
+        jsr     ProceedSounds
+
+        jsr     InputUpdate
+
+        bit     PPU_STATUS
+
+        lda     ppu_scroll_x
+        sta     PPU_SCROLL
+        lda     ppu_scroll_y
+        sta     PPU_SCROLL
+
+        lda     ppu_ctrl
+        sta     PPU_CTRL
+
+        lda     #1
+        sta     nmi_done
+
+        pla
+        tay
+        pla
+        tax
+        pla
+
+        rti
+
+
+InputUpdate:
+        lda     #1
+        sta     input_edge      ; この bit をループ終了判定に使う
+        sta     CONTROLLER
+        lsr
+        sta     CONTROLLER
+
+@loop:
+        lda     CONTROLLER
+        and     #3
+        cmp     #1
+        rol     input_edge
+        bcc     @loop
+
+        lda     input
+        beq     @edge
+        lda     input_edge
+        sta     input
+        lda     #0
+        sta     input_edge
+        beq     @rts    ; bra
+@edge:
+        lda     input_edge
+        sta     input
+@rts:
+        rts
+
+
+IRQ:    rti
+
+
+;;; boilerplate {{{
+.segment "VECTORS"
+        .addr   NMI, RESET, IRQ
+
+.segment "HEADER"
+        .byte   $4E, $45, $53, $1A
+        .byte   1
+        .byte   1
+
+.segment "CHR"
+; }}}
