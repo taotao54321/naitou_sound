@@ -119,20 +119,32 @@ RESET:
         inx
         bne     @clear_ram
 
-        ; PPU VRAM ($2000-$23FF) を 0 クリア
+        ; PPU ネームテーブル ($2000-$23BF) を 0xFF でクリア
         lda     #>$2000
         sta     PPU_ADDR
         lda     #<$2000
         sta     PPU_ADDR
-        ldx     #4
-@clear_vram_outer:
-        ldy     #0
-@clear_vram_inner:
+        lda     #$FF
+        ldx     #>$3C0
+        ldy     #<$3C0
+@clear_vram:
         sta     PPU_DATA
         dey
-        bne     @clear_vram_inner
+        bne     @clear_vram
         dex
-        bne     @clear_vram_outer
+        bpl     @clear_vram
+
+        ; PPU アトリビュートテーブル ($23C0-$23FF) を 0 クリア
+        lda     #>$23C0
+        sta     PPU_ADDR
+        lda     #<$23C0
+        sta     PPU_ADDR
+        lda     #0
+        ldx     #$40
+@clear_attrtable:
+        sta     PPU_DATA
+        dex
+        bne     @clear_attrtable
 
         ; PPU パレット設定
         lda     #>$3F00
@@ -352,9 +364,9 @@ prepare_sound_funcs:
 
 
 PrepareSound0:
-        lda     #<sq0_sound_0
+        lda     #<sound0_sq0
         sta     sq0_sound_ptr
-        lda     #>sq0_sound_0
+        lda     #>sound0_sq0
         sta     sq0_sound_ptr+1
 
         lda     apu_status
@@ -367,7 +379,7 @@ PrepareSound0:
         rts
 
 
-sq0_sound_0:
+sound0_sq0:
         .byte   (12<<4) | 0
         .byte   (10<<4) | 0
         .byte   ( 9<<4) | 2
@@ -453,6 +465,4 @@ IRQ:    rti
         .byte   $4E, $45, $53, $1A
         .byte   1
         .byte   1
-
-.segment "CHR"
 ; }}}

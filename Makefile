@@ -6,7 +6,7 @@ LD65 := ld65
 TARGET := naitou_sound.nes
 
 CFG  := naitou_sound.cfg
-OBJS := naitou_sound.o
+OBJS := prg.o chr.o
 
 all: $(TARGET)
 
