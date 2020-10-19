@@ -18,6 +18,9 @@ PPU_CTRL_NMI_ENABLE = 1 << 7
 
 PPU_MASK_BG_ENABLE = 1 << 3
 
+.define PPU_ADDR_NAMETABLE(id, col, row) $2000 + $400*(id) + $20*(row) + (col)
+PPU_ADDR_PALETTE = $3F00
+
 APU_SQ0    = $4000
 APU_TRI    = $4008
 APU_DMC    = $4010
@@ -82,12 +85,44 @@ sq0_octave: .res 1
 .segment "CODE"
 ;---------------------------------------------------------------------
 
-RESET:
+;-----------------------------
+; sound data
+;-----------------------------
+
+note_timer_values: ; {{{
+        .word   855     ; C3
+        .word   807     ; C#3
+        .word   762     ; D3
+        .word   719     ; D#3
+        .word   679     ; E3
+        .word   641     ; F3
+        .word   605     ; F#3
+        .word   571     ; G3
+        .word   539     ; G#3
+        .word   508     ; A3
+        .word   480     ; A#3
+        .word   453     ; B3
+        .word   0
+; }}}
+
+sound0_sq0: ; {{{
+        .byte   (12<<4) | 0
+        .byte   (10<<4) | 0
+        .byte   ( 9<<4) | 2
+        .byte   ( 0<<4) | 2
+        .byte   ( 0<<4) | 4
+        .byte   ( 0<<4) | 6
+        .byte   (11<<4) | 1
+; }}}
+
+
+;-----------------------------
+; main "thread"
+;-----------------------------
+
+RESET: ; {{{
         sei
         cld
-
-        lda     #APU_FRAME_IRQ_DISABLE
-        sta     APU_FRAME
 
         ldx     #$FF
         txs
@@ -97,13 +132,8 @@ RESET:
         sta     PPU_MASK        ; 描画無効
         sta     APU_DMC         ; DMC IRQ 無効
 
-        bit     PPU_STATUS
-@wait_vblank_1:
-        bit     PPU_STATUS
-        bpl     @wait_vblank_1
-@wait_vblank_2:
-        bit     PPU_STATUS
-        bpl     @wait_vblank_2
+        lda     #APU_FRAME_IRQ_DISABLE
+        sta     APU_FRAME
 
         lda     #0
         ldx     #0
@@ -119,37 +149,40 @@ RESET:
         inx
         bne     @clear_ram
 
-        ; PPU ネームテーブル ($2000-$23BF) を 0xFF でクリア
+        jsr     InitPpu
+
+        jmp     MainLoop
+; }}}
+
+
+InitPpu: ; {{{
+        bit     PPU_STATUS
+@wait_vblank_1:
+        bit     PPU_STATUS
+        bpl     @wait_vblank_1
+@wait_vblank_2:
+        bit     PPU_STATUS
+        bpl     @wait_vblank_2
+
+        ; VRAM ($2000-$2400) を 0 クリア
         lda     #>$2000
         sta     PPU_ADDR
         lda     #<$2000
         sta     PPU_ADDR
-        lda     #$FF
-        ldx     #>$3C0
-        ldy     #<$3C0
-@clear_nametable:
+        lda     #0
+        ldx     #>$400
+        ldy     #<$400
+@clear_vram:
         sta     PPU_DATA
         dey
-        bne     @clear_nametable
+        bne     @clear_vram
         dex
-        bpl     @clear_nametable
+        bne     @clear_vram
 
-        ; PPU アトリビュートテーブル ($23C0-$23FF) を 0 クリア
-        lda     #>$23C0
+        ; パレット設定
+        lda     #>PPU_ADDR_PALETTE
         sta     PPU_ADDR
-        lda     #<$23C0
-        sta     PPU_ADDR
-        lda     #0
-        ldx     #$40
-@clear_attrtable:
-        sta     PPU_DATA
-        dex
-        bne     @clear_attrtable
-
-        ; PPU パレット設定
-        lda     #>$3F00
-        sta     PPU_ADDR
-        lda     #<$3F00
+        lda     #<PPU_ADDR_PALETTE
         sta     PPU_ADDR
         lda     #$0F
         sta     PPU_DATA
@@ -159,21 +192,27 @@ RESET:
         sta     PPU_DATA
         sta     PPU_DATA
 
-        ; PPU スクロール (0,0)
+        ; スクロール (0,0)
         lda     #0
         sta     ppu_scroll_x
         sta     PPU_SCROLL
         sta     ppu_scroll_y
         sta     PPU_SCROLL
 
+        ; 描画有効
         lda     #PPU_MASK_BG_ENABLE
         sta     PPU_MASK
 
+        ; NMI 有効
         lda     #PPU_CTRL_NT0 | PPU_CTRL_NMI_ENABLE
         sta     ppu_ctrl
         sta     PPU_CTRL
 
-@mainloop:
+        rts
+; }}}
+
+
+MainLoop: ; {{{
 @wait_nmi:
         lda     nmi_done
         beq     @wait_nmi
@@ -206,32 +245,159 @@ RESET:
         lda     input_edge
         and     #BUTTON_A
         beq     @next
-        jsr     PrepareSound
+        jsr     RequestSound
 
 @next:
-        jmp     @mainloop
+        jmp     MainLoop
+; }}}
 
 
-ProceedSounds:
+RequestSound: ; {{{
+        lda     #0
+        sta     apu_status
+        sta     APU_STATUS
+
+        lda     sound_id
+        asl
+        tay
+
+        lda     request_sound_funcs,y
+        sta     tmp
+        lda     request_sound_funcs+1,y
+        sta     tmp+1
+
+        jmp     (tmp)
+; }}}
+
+
+request_sound_funcs: ; {{{
+        .addr   RequestSound0
+; }}}
+
+
+RequestSound0: ; {{{
+        lda     #<sound0_sq0
+        ldx     #>sound0_sq0
+        jmp     RequestSq0
+; }}}
+
+
+RequestSq0: ; {{{
+; 引数
+;       A       SQ0 サウンドデータアドレス下位
+;       X       SQ0 サウンドデータアドレス上位
+
+        sta     sq0_sound_ptr
+        stx     sq0_sound_ptr+1
+
+        lda     apu_status
+        ora     #APU_STATUS_SQ0
+        sta     apu_status
+        sta     APU_STATUS
+
+        rts
+; }}}
+
+
+;-----------------------------
+; NMI "thread"
+;-----------------------------
+
+NMI: ; {{{
+        pha
+        txa
+        pha
+        tya
+        pha
+
+        ; NMI 禁止
+        lda     ppu_ctrl
+        and     #NOT8 PPU_CTRL_NMI_ENABLE
+        sta     PPU_CTRL
+
+        jsr     PresentSoundId
+
+        jsr     ProceedSounds
+
+        jsr     InputUpdate
+
+        lda     ppu_scroll_x
+        sta     PPU_SCROLL
+        lda     ppu_scroll_y
+        sta     PPU_SCROLL
+
+        ; NMI 許可
+        bit     PPU_STATUS
+        lda     ppu_ctrl
+        sta     PPU_CTRL
+
+        lda     #1
+        sta     nmi_done
+
+        pla
+        tay
+        pla
+        tax
+        pla
+
+        rti
+; }}}
+
+
+PresentSoundId: ; {{{
+@ppu_addr = PPU_ADDR_NAMETABLE 0, 15, 15
+        lda     #>@ppu_addr
+        sta     PPU_ADDR
+        lda     #<@ppu_addr
+        sta     PPU_ADDR
+
+        ; 十の位
+        ldx     #$30 - 1
+        lda     sound_id
+@div10:
+        inx
+        sec
+        sbc     #10
+        bcs     @div10
+        adc     #10
+        stx     PPU_DATA
+
+        ; 一の位
+        clc
+        adc     #$30
+        sta     PPU_DATA
+
+        rts
+; }}}
+
+
+ProceedSounds: ; {{{
         lda     apu_status
         and     #APU_STATUS_SQ0
         beq     @tri
         jsr     ProceedSq0
 
 @tri:
-        
+        lda     apu_status
+        and     #APU_STATUS_TRI
+        beq     @rts
+        jsr     ProceedTri
 
 @rts:
         rts
+; }}}
 
 
-ProceedSq0:
+ProceedSq0: ; {{{
+        ; 発音中なら何もしない (APU_STATUS のフラグをタイマーとして利用)
         lda     APU_STATUS
         and     #APU_STATUS_SQ0
         bne     @rts
+        ; 消音中なら次のデータを処理
         jsr     ProcessSq0Data
 @rts:
         rts
+; }}}
 
 
 ProcessSq0Data:
@@ -313,7 +479,20 @@ ProcessSq0Data:
         jmp     @loop
 
 
-NoteTimerValue:
+ProceedTri: ; {{{
+        rts
+; }}}
+
+
+NoteTimerValue: ; {{{
+;;; 指定した音階/オクターブ数に対応する矩形波/三角波タイマー値を得る
+; 引数
+;       A       音階 (0..=12)
+;               0 が C
+;               12 はタイマー値 0
+;       X       オクターブ数 (1-based, 1..=7)
+;               矩形波で A=0 の場合、X=1: C4, X=2: C5, ...
+;               三角波で A=0 の場合、X=1: C3, X=2: C4, ...
         asl
         tay
 
@@ -329,104 +508,10 @@ NoteTimerValue:
         bne     @loop
 
         rts
-
-note_timer_values:
-        .word   855     ; C3
-        .word   807     ; C#3
-        .word   762     ; D3
-        .word   719     ; D#3
-        .word   679     ; E3
-        .word   641     ; F3
-        .word   605     ; F#3
-        .word   571     ; G3
-        .word   539     ; G#3
-        .word   508     ; A3
-        .word   480     ; A#3
-        .word   453     ; B3
-        .word   0
+; }}}
 
 
-PrepareSound:
-        lda     sound_id
-        asl
-        tay
-
-        lda     prepare_sound_funcs,y
-        sta     tmp
-        lda     prepare_sound_funcs+1,y
-        sta     tmp+1
-
-        jmp     (tmp)
-
-
-prepare_sound_funcs:
-        .addr   PrepareSound0
-
-
-PrepareSound0:
-        lda     #<sound0_sq0
-        sta     sq0_sound_ptr
-        lda     #>sound0_sq0
-        sta     sq0_sound_ptr+1
-
-        lda     apu_status
-        ora     #APU_STATUS_SQ0
-        sta     apu_status
-
-        lda     apu_status
-        sta     APU_STATUS
-
-        rts
-
-
-sound0_sq0:
-        .byte   (12<<4) | 0
-        .byte   (10<<4) | 0
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 6
-        .byte   (11<<4) | 1
-
-
-NMI:
-        pha
-        txa
-        pha
-        tya
-        pha
-
-        lda     ppu_ctrl
-        and     #NOT8 PPU_CTRL_NMI_ENABLE
-        sta     PPU_CTRL
-
-        jsr     ProceedSounds
-
-        jsr     InputUpdate
-
-        bit     PPU_STATUS
-
-        lda     ppu_scroll_x
-        sta     PPU_SCROLL
-        lda     ppu_scroll_y
-        sta     PPU_SCROLL
-
-        lda     ppu_ctrl
-        sta     PPU_CTRL
-
-        lda     #1
-        sta     nmi_done
-
-        pla
-        tay
-        pla
-        tax
-        pla
-
-        rti
-
-
-InputUpdate:
+InputUpdate: ; {{{
         lda     #1
         sta     input_edge      ; この bit をループ終了判定に使う
         sta     CONTROLLER
@@ -452,12 +537,12 @@ InputUpdate:
         sta     input
 @rts:
         rts
-
-
-IRQ:    rti
+; }}}
 
 
 ;;; boilerplate {{{
+IRQ:    rti
+
 .segment "VECTORS"
         .addr   NMI, RESET, IRQ
 
