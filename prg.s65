@@ -1,7 +1,7 @@
 ;=====================================================================
 ; 内藤九段将棋秘伝 (FC) sound test
 ;
-; FIXME: 以前の音が鳴り終わるまで次の音を鳴らせない
+; FIXME: 以前の音が鳴り終わってすぐ別の音を鳴らそうとすると反応しないことがある
 ;=====================================================================
 
 .setcpu "6502"
@@ -621,6 +621,14 @@ request_sound_funcs: ; {{{
         .addr   RequestSound2
         .addr   RequestSound3
         .addr   RequestSound4
+        .addr   RequestSound5
+        .addr   RequestSound6
+        .addr   RequestSound7
+        .addr   RequestSound8
+        .addr   RequestSound9
+        .addr   RequestSound10
+        .addr   RequestSound11
+        .addr   RequestSound12
 ; }}}
 
 RequestSound0: ; {{{
@@ -657,6 +665,66 @@ RequestSound4: ; {{{
         jmp     RequestTri
 ; }}}
 
+RequestSound5: ; {{{
+        lda     #<sound5_sq0_tri
+        ldx     #>sound5_sq0_tri
+        jsr     RequestSq0
+
+        lda     #<sound5_sq0_tri
+        ldx     #>sound5_sq0_tri
+        jmp     RequestTri
+; }}}
+
+RequestSound6: ; {{{
+        lda     #<sound6_sq0
+        ldx     #>sound6_sq0
+        jmp     RequestSq0
+; }}}
+
+RequestSound7: ; {{{
+        lda     #<sound7_sq0
+        ldx     #>sound7_sq0
+        jmp     RequestSq0
+; }}}
+
+RequestSound8: ; {{{
+        lda     #<sound8_sq0
+        ldx     #>sound8_sq0
+        jmp     RequestSq0
+; }}}
+
+RequestSound9: ; {{{
+        lda     #<sound9_sq0
+        ldx     #>sound9_sq0
+        jmp     RequestSq0
+; }}}
+
+RequestSound10: ; {{{
+        lda     #<sound10_sq0
+        ldx     #>sound10_sq0
+        jsr     RequestSq0
+
+        lda     #<sound10_tri
+        ldx     #>sound10_tri
+        jmp     RequestTri
+; }}}
+
+RequestSound11: ; {{{
+        lda     #<sound11_sq0_tri
+        ldx     #>sound11_sq0_tri
+        jsr     RequestSq0
+
+        lda     #<sound11_sq0_tri
+        ldx     #>sound11_sq0_tri
+        jmp     RequestTri
+; }}}
+
+RequestSound12: ; {{{
+        lda     #<sound12_sq0
+        ldx     #>sound12_sq0
+        jmp     RequestSq0
+; }}}
+
 RequestSq0: ; {{{
 ; 引数
 ;       A       SQ0 サウンドデータアドレス下位
@@ -668,7 +736,7 @@ RequestSq0: ; {{{
         lda     apu_status
         ora     #APU_STATUS_SQ0
         sta     apu_status
-        ; これだと以前の音が鳴り終わるまで待たされるが、原作のコードに合わせた。
+        ; TODO: 冒頭の FIXME の件はこの辺が悪さをしてる?
         sta     APU_STATUS
 
         rts
@@ -685,7 +753,7 @@ RequestTri: ; {{{
         lda     apu_status
         ora     #APU_STATUS_TRI
         sta     apu_status
-        ; これだと以前の音が鳴り終わるまで待たされるが、原作のコードに合わせた。
+        ; TODO: 冒頭の FIXME の件はこの辺が悪さをしてる?
         sta     APU_STATUS
 
         rts
