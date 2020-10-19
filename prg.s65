@@ -24,7 +24,9 @@ PPU_MASK_BG_ENABLE = 1 << 3
 PPU_ADDR_PALETTE = $3F00
 
 APU_SQ0    = $4000
+APU_SQ1    = $4004
 APU_TRI    = $4008
+APU_NOI    = $400C
 APU_DMC    = $4010
 APU_STATUS = $4015
 APU_FRAME  = $4017
@@ -38,7 +40,9 @@ APU_SQ_SWEEP_NEGATE = 1 << 3
 APU_SQ_SWEEP_ENABLE = 1 << 7
 
 APU_STATUS_SQ0 = 1 << 0
+APU_STATUS_SQ1 = 1 << 1
 APU_STATUS_TRI = 1 << 2
+APU_STATUS_NOI = 1 << 3
 
 APU_FRAME_IRQ_DISABLE = 1 << 6
 APU_FRAME_STEP5       = 1 << 7
@@ -51,7 +55,7 @@ BUTTON_B = 1 << 6
 BUTTON_L = 1 << 1
 BUTTON_R = 1 << 0
 
-N_SOUND = 13
+N_SOUND = 16
 
 
 ;---------------------------------------------------------------------
@@ -117,350 +121,379 @@ note_timer_values: ; {{{
         .word   0
 ; }}}
 
+;;; 矩形波0/三角波 サウンドデータフォーマット
+; 上位 4bit が命令コード、下位 4bit が引数。
+;   ( 9<<4) | lo: オクターブ数を lo に変更 (lo: 0..=7)
+;                 命令処理ループ継続
+;   (10<<4) | lo: length counter 最上位 bit を lo に変更 (lo: [0,1])
+;                 命令処理ループ継続
+;   (11<<4) |  1: 消音 (lo は 1 固定)
+;                 命令処理ループを抜ける
+;   (12<<4) | lo: 矩形波0 の場合、音色 ID を lo に変更 (lo: 0..=5)
+;                 三角波の場合、無視される
+;                 命令処理ループ継続
+;   ( L<<4) | lo: 音階 lo で発声。L は length counter bit0-3 (L: 0..=7, lo:0..=12)
+;                 lo == 12 のときは周波数タイマー値 0 (休符)
+;                 命令処理ループを抜ける
+
+.define SOUND_OP_NOTE(len, note) ((len)<<4) | (note)
+.define SOUND_OP_REST(len)       ((len)<<4) | 12
+.define SOUND_OP_OCTAVE(octave)  (    9<<4) | (octave)
+.define SOUND_OP_LEN_MSB(msb)    (   10<<4) | (msb)
+.define SOUND_OP_STOP()          (   11<<4) | 1
+.define SOUND_OP_CONFIG(id)      (   12<<4) | (id)
+
 sound0_sq0: ; {{{
-        .byte   (12<<4) | 0
-        .byte   (10<<4) | 0
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 6
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 0
+        .byte   SOUND_OP_LEN_MSB 0
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 6
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound1_sq0: ; {{{
-        .byte   (12<<4) | 1
-        .byte   (10<<4) | 0
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 6
-        .byte   ( 0<<4) | 8
-        .byte   ( 0<<4) | 6
-        .byte   ( 0<<4) | 8
-        .byte   ( 0<<4) | 10
-        .byte   ( 0<<4) | 10
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 1
+        .byte   SOUND_OP_LEN_MSB 0
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 6
+        .byte   SOUND_OP_NOTE 0, 8
+        .byte   SOUND_OP_NOTE 0, 6
+        .byte   SOUND_OP_NOTE 0, 8
+        .byte   SOUND_OP_NOTE 0, 10
+        .byte   SOUND_OP_NOTE 0, 10
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound2_sq0: ; {{{
-        .byte   (12<<4) | 0
-        .byte   (10<<4) | 1
-        .byte   ( 9<<4) | 3
-        .byte   ( 0<<4) | 0
-        .byte   ( 2<<4) | 12
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 0
+        .byte   SOUND_OP_LEN_MSB 1
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 0, 0
+        .byte   SOUND_OP_REST 2
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound3_sq0: ; {{{
-        .byte   (12<<4) | 0
-        .byte   (10<<4) | 0
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 2
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 0
+        .byte   SOUND_OP_LEN_MSB 0
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound4_sq0: ; {{{
-        .byte   (12<<4) | 2
-        .byte   (10<<4) | 1
-        .byte   ( 9<<4) | 2
-        .byte   ( 2<<4) | 0
-        .byte   ( 2<<4) | 2
-        .byte   ( 1<<4) | 4
-        .byte   ( 2<<4) | 5
-        .byte   ( 1<<4) | 4
-        .byte   ( 1<<4) | 0
-        .byte   ( 1<<4) | 0
-        .byte   ( 1<<4) | 2
-        .byte   ( 1<<4) | 4
-        .byte   ( 3<<4) | 0
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 2
+        .byte   SOUND_OP_LEN_MSB 1
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 2, 0
+        .byte   SOUND_OP_NOTE 2, 2
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 2, 5
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 1, 0
+        .byte   SOUND_OP_NOTE 1, 0
+        .byte   SOUND_OP_NOTE 1, 2
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 3, 0
+        .byte   SOUND_OP_STOP
 ; }}}
 sound4_tri: ; {{{
-        .byte   (12<<4) | 1
-        .byte   (10<<4) | 1
-        .byte   ( 9<<4) | 2
-        .byte   ( 2<<4) | 0
-        .byte   ( 2<<4) | 2
-        .byte   ( 1<<4) | 4
-        .byte   ( 2<<4) | 5
-        .byte   ( 1<<4) | 4
-        .byte   ( 2<<4) | 0
-        .byte   ( 2<<4) | 4
-        .byte   ( 3<<4) | 0
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 1
+        .byte   SOUND_OP_LEN_MSB 1
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 2, 0
+        .byte   SOUND_OP_NOTE 2, 2
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 2, 5
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 2, 0
+        .byte   SOUND_OP_NOTE 2, 4
+        .byte   SOUND_OP_NOTE 3, 0
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound5_sq0_tri: ; {{{
-        .byte   (12<<4) | 0
-        .byte   (10<<4) | 1
-        .byte   ( 9<<4) | 1
-        .byte   ( 1<<4) | 7
-        .byte   ( 1<<4) | 5
-        .byte   ( 1<<4) | 4
-        .byte   ( 1<<4) | 5
-        .byte   ( 1<<4) | 4
-        .byte   ( 1<<4) | 2
-        .byte   ( 2<<4) | 0
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 0
+        .byte   SOUND_OP_LEN_MSB 1
+        .byte   SOUND_OP_OCTAVE 1
+        .byte   SOUND_OP_NOTE 1, 7
+        .byte   SOUND_OP_NOTE 1, 5
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 1, 5
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 1, 2
+        .byte   SOUND_OP_NOTE 2, 0
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound6_sq0: ; {{{
-        .byte   (12<<4) | 1
-        .byte   (10<<4) | 0
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 0
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 5
-        .byte   ( 0<<4) | 7
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 12
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 1
+        .byte   SOUND_OP_LEN_MSB 0
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 0
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 5
+        .byte   SOUND_OP_NOTE 0, 7
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_REST 0
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound7_sq0: ; {{{
-        .byte   (12<<4) | 2
-        .byte   (10<<4) | 0
-        .byte   ( 9<<4) | 1
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 7
-        .byte   ( 0<<4) | 5
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 2
-        .byte   (12<<4) | 0
-        .byte   ( 0<<4) | 0
-        .byte   ( 0<<4) | 0
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 2
+        .byte   SOUND_OP_LEN_MSB 0
+        .byte   SOUND_OP_OCTAVE 1
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 7
+        .byte   SOUND_OP_NOTE 0, 5
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_CONFIG 0
+        .byte   SOUND_OP_NOTE 0, 0
+        .byte   SOUND_OP_NOTE 0, 0
+        .byte   SOUND_OP_STOP
 
 ; }}}
 
 sound8_sq0: ; {{{
-        .byte   (12<<4) | 2
-        .byte   (10<<4) | 1
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 12
-        .byte   ( 1<<4) | 3
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 2
+        .byte   SOUND_OP_LEN_MSB 1
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_REST 0
+        .byte   SOUND_OP_NOTE 1, 3
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound9_sq0: ; {{{
-        .byte   (12<<4) | 1
-        .byte   (10<<4) | 0
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 5
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 1
+        .byte   SOUND_OP_LEN_MSB 0
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 5
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound10_sq0: ; {{{
-        .byte   (12<<4) | 0
-        .byte   (10<<4) | 1
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 5
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 5
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 5
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 5
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 5
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 4
-        .byte   ( 9<<4) | 3
-        .byte   ( 0<<4) | 2
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 9<<4) | 3
-        .byte   ( 0<<4) | 2
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 9<<4) | 3
-        .byte   ( 0<<4) | 4
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 9<<4) | 3
-        .byte   ( 0<<4) | 4
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 9<<4) | 3
-        .byte   ( 0<<4) | 2
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 4
-        .byte   ( 9<<4) | 3
-        .byte   ( 0<<4) | 2
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 2
-        .byte   ( 9<<4) | 3
-        .byte   ( 0<<4) | 2
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 5
-        .byte   ( 9<<4) | 1
-        .byte   ( 0<<4) | 9
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 2
-        .byte   ( 9<<4) | 1
-        .byte   ( 0<<4) | 9
-        .byte   (12<<4) | 3
-        .byte   ( 9<<4) | 2
-        .byte   ( 2<<4) | 4
-        .byte   ( 2<<4) | 5
-        .byte   ( 2<<4) | 5
-        .byte   ( 5<<4) | 11
-        .byte   ( 9<<4) | 3
-        .byte   ( 1<<4) | 2
-        .byte   ( 3<<4) | 4
-        .byte   ( 1<<4) | 4
-        .byte   ( 1<<4) | 2
-        .byte   ( 9<<4) | 2
-        .byte   ( 1<<4) | 11
-        .byte   ( 9<<4) | 3
-        .byte   ( 1<<4) | 2
-        .byte   ( 3<<4) | 4
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 0
+        .byte   SOUND_OP_LEN_MSB 1
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 5
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 5
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 5
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 5
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 5
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 5
+        .byte   SOUND_OP_OCTAVE 1
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_OCTAVE 1
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_CONFIG 3
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 2, 4
+        .byte   SOUND_OP_NOTE 2, 5
+        .byte   SOUND_OP_NOTE 2, 5
+        .byte   SOUND_OP_NOTE 5, 11
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 1, 2
+        .byte   SOUND_OP_NOTE 3, 4
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 1, 2
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 1, 11
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 1, 2
+        .byte   SOUND_OP_NOTE 3, 4
+        .byte   SOUND_OP_STOP
 ; }}}
 sound10_tri: ; {{{
-        .byte   (12<<4) | 0
-        .byte   (10<<4) | 1
-        .byte   ( 9<<4) | 2
-        .byte   ( 2<<4) | 9
-        .byte   ( 2<<4) | 9
-        .byte   ( 2<<4) | 9
-        .byte   ( 2<<4) | 9
-        .byte   ( 9<<4) | 3
-        .byte   ( 2<<4) | 2
-        .byte   ( 2<<4) | 2
-        .byte   ( 2<<4) | 2
-        .byte   ( 2<<4) | 2
-        .byte   ( 2<<4) | 4
-        .byte   ( 2<<4) | 4
-        .byte   ( 2<<4) | 4
-        .byte   ( 2<<4) | 4
-        .byte   ( 2<<4) | 2
-        .byte   ( 2<<4) | 2
-        .byte   ( 2<<4) | 2
-        .byte   ( 2<<4) | 2
-        .byte   ( 2<<4) | 11
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 0
+        .byte   SOUND_OP_LEN_MSB 1
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 2, 9
+        .byte   SOUND_OP_NOTE 2, 9
+        .byte   SOUND_OP_NOTE 2, 9
+        .byte   SOUND_OP_NOTE 2, 9
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 2, 2
+        .byte   SOUND_OP_NOTE 2, 2
+        .byte   SOUND_OP_NOTE 2, 2
+        .byte   SOUND_OP_NOTE 2, 2
+        .byte   SOUND_OP_NOTE 2, 4
+        .byte   SOUND_OP_NOTE 2, 4
+        .byte   SOUND_OP_NOTE 2, 4
+        .byte   SOUND_OP_NOTE 2, 4
+        .byte   SOUND_OP_NOTE 2, 2
+        .byte   SOUND_OP_NOTE 2, 2
+        .byte   SOUND_OP_NOTE 2, 2
+        .byte   SOUND_OP_NOTE 2, 2
+        .byte   SOUND_OP_NOTE 2, 11
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound11_sq0_tri: ; {{{
-        .byte   (12<<4) | 0
-        .byte   (10<<4) | 1
-        .byte   ( 9<<4) | 2
-        .byte   ( 6<<4) | 0
-        .byte   ( 0<<4) | 0
-        .byte   ( 0<<4) | 0
-        .byte   ( 6<<4) | 0
-        .byte   ( 0<<4) | 0
-        .byte   ( 1<<4) | 0
-        .byte   ( 1<<4) | 7
-        .byte   ( 1<<4) | 4
-        .byte   ( 1<<4) | 7
-        .byte   ( 6<<4) | 2
-        .byte   ( 0<<4) | 2
-        .byte   ( 0<<4) | 2
-        .byte   ( 6<<4) | 2
-        .byte   ( 0<<4) | 2
-        .byte   ( 1<<4) | 2
-        .byte   ( 1<<4) | 9
-        .byte   ( 1<<4) | 5
-        .byte   ( 1<<4) | 9
-        .byte   ( 6<<4) | 4
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 4
-        .byte   ( 6<<4) | 4
-        .byte   ( 0<<4) | 4
-        .byte   ( 1<<4) | 4
-        .byte   ( 1<<4) | 11
-        .byte   ( 1<<4) | 7
-        .byte   ( 1<<4) | 11
-        .byte   (12<<4) | 4
-        .byte   ( 1<<4) | 9
-        .byte   ( 1<<4) | 9
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 11
-        .byte   ( 1<<4) | 11
-        .byte   ( 9<<4) | 3
-        .byte   ( 3<<4) | 0
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 0
+        .byte   SOUND_OP_LEN_MSB 1
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 6, 0
+        .byte   SOUND_OP_NOTE 0, 0
+        .byte   SOUND_OP_NOTE 0, 0
+        .byte   SOUND_OP_NOTE 6, 0
+        .byte   SOUND_OP_NOTE 0, 0
+        .byte   SOUND_OP_NOTE 1, 0
+        .byte   SOUND_OP_NOTE 1, 7
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 1, 7
+        .byte   SOUND_OP_NOTE 6, 2
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 6, 2
+        .byte   SOUND_OP_NOTE 0, 2
+        .byte   SOUND_OP_NOTE 1, 2
+        .byte   SOUND_OP_NOTE 1, 9
+        .byte   SOUND_OP_NOTE 1, 5
+        .byte   SOUND_OP_NOTE 1, 9
+        .byte   SOUND_OP_NOTE 6, 4
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 6, 4
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 1, 11
+        .byte   SOUND_OP_NOTE 1, 7
+        .byte   SOUND_OP_NOTE 1, 11
+        .byte   SOUND_OP_CONFIG 4
+        .byte   SOUND_OP_NOTE 1, 9
+        .byte   SOUND_OP_NOTE 1, 9
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 1, 11
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 3, 0
+        .byte   SOUND_OP_STOP
 ; }}}
 
 sound12_sq0: ; {{{
-        .byte   (12<<4) | 0
-        .byte   (10<<4) | 1
-        .byte   ( 9<<4) | 2
-        .byte   ( 1<<4) | 9
-        .byte   ( 1<<4) | 7
-        .byte   ( 1<<4) | 9
-        .byte   ( 1<<4) | 11
-        .byte   ( 9<<4) | 3
-        .byte   ( 1<<4) | 0
-        .byte   ( 9<<4) | 2
-        .byte   ( 1<<4) | 11
-        .byte   ( 1<<4) | 9
-        .byte   ( 1<<4) | 7
-        .byte   ( 1<<4) | 11
-        .byte   ( 9<<4) | 3
-        .byte   ( 1<<4) | 0
-        .byte   ( 1<<4) | 2
-        .byte   ( 1<<4) | 4
-        .byte   ( 1<<4) | 2
-        .byte   ( 1<<4) | 0
-        .byte   ( 9<<4) | 2
-        .byte   ( 0<<4) | 11
-        .byte   ( 0<<4) | 11
-        .byte   ( 1<<4) | 9
-        .byte   (12<<4) | 2
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 4
-        .byte   ( 0<<4) | 9
-        .byte   ( 0<<4) | 4
-        .byte   ( 3<<4) | 9
-        .byte   (11<<4) | 1
+        .byte   SOUND_OP_CONFIG 0
+        .byte   SOUND_OP_LEN_MSB 1
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 1, 9
+        .byte   SOUND_OP_NOTE 1, 7
+        .byte   SOUND_OP_NOTE 1, 9
+        .byte   SOUND_OP_NOTE 1, 11
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 1, 0
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 1, 11
+        .byte   SOUND_OP_NOTE 1, 9
+        .byte   SOUND_OP_NOTE 1, 7
+        .byte   SOUND_OP_NOTE 1, 11
+        .byte   SOUND_OP_OCTAVE 3
+        .byte   SOUND_OP_NOTE 1, 0
+        .byte   SOUND_OP_NOTE 1, 2
+        .byte   SOUND_OP_NOTE 1, 4
+        .byte   SOUND_OP_NOTE 1, 2
+        .byte   SOUND_OP_NOTE 1, 0
+        .byte   SOUND_OP_OCTAVE 2
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 0, 11
+        .byte   SOUND_OP_NOTE 1, 9
+        .byte   SOUND_OP_CONFIG 2
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 0, 9
+        .byte   SOUND_OP_NOTE 0, 4
+        .byte   SOUND_OP_NOTE 3, 9
+        .byte   SOUND_OP_STOP
 ; }}}
+
+.undef SOUND_OP_NOTE
+.undef SOUND_OP_REST
+.undef SOUND_OP_OCTAVE
+.undef SOUND_OP_LEN_MSB
+.undef SOUND_OP_STOP
+.undef SOUND_OP_CONFIG
 
 ;-----------------------------
 ; main "thread"
@@ -629,6 +662,9 @@ request_sound_funcs: ; {{{
         .addr   RequestSound10
         .addr   RequestSound11
         .addr   RequestSound12
+        .addr   RequestSound13
+        .addr   RequestSound14
+        .addr   RequestSound15
 ; }}}
 
 RequestSound0: ; {{{
@@ -723,6 +759,57 @@ RequestSound12: ; {{{
         lda     #<sound12_sq0
         ldx     #>sound12_sq0
         jmp     RequestSq0
+; }}}
+
+RequestSound13: ; {{{
+@timer = 288
+        lda     apu_status
+        ora     #APU_STATUS_SQ1
+        sta     APU_STATUS
+
+        lda     #APU_SQ_DUTY_QUARTER_NEG | 3
+        sta     APU_SQ1
+        lda     #(2<<4) | 2
+        sta     APU_SQ1+1
+        lda     #<@timer
+        sta     APU_SQ1+2
+        lda     #(4<<3) | >@timer
+        sta     APU_SQ1+3
+
+        rts
+; }}}
+
+RequestSound14: ; {{{
+@timer = 82
+        lda     apu_status
+        ora     #APU_STATUS_SQ1
+        sta     APU_STATUS
+
+        lda     #APU_SQ_DUTY_QUARTER_NEG | 3
+        sta     APU_SQ1
+        lda     #APU_SQ_SWEEP_ENABLE | (2<<4) | APU_SQ_SWEEP_NEGATE | 2
+        sta     APU_SQ1+1
+        lda     #<@timer
+        sta     APU_SQ1+2
+        lda     #(2<<3) | >@timer
+        sta     APU_SQ1+3
+
+        rts
+; }}}
+
+RequestSound15: ; {{{
+        lda     apu_status
+        ora     #APU_STATUS_NOI
+        sta     APU_STATUS
+
+        lda     #1
+        sta     APU_NOI
+        lda     #5
+        sta     APU_NOI+2
+        lda     #30 << 3
+        sta     APU_NOI+3
+
+        rts
 ; }}}
 
 RequestSq0: ; {{{
@@ -888,7 +975,6 @@ ProcessSq0Data: ; {{{
         rts
 ; }}}
 
-
 ProcessSq0Command: ; {{{
 ; 引数
 ;       A       サウンドデータ コマンド (0..=12)
@@ -1023,35 +1109,41 @@ sq0_configure_funcs: ; {{{
         .addr   UNREACHABLE
 ; }}}
 
-Sq0Configure0:
+Sq0Configure0: ; {{{
         ldx     #APU_SQ_DUTY_QUARTER_NEG | 15
         ldy     #0
         jmp     Sq0ConfigureGo
+; }}}
 
-Sq0Configure1:
+Sq0Configure1: ; {{{
         ldx     #APU_SQ_DUTY_QUARTER_NEG | 15
         ldy     #APU_SQ_SWEEP_ENABLE | (4<<4) | 2
         jmp     Sq0ConfigureGo
+; }}}
 
-Sq0Configure2:
+Sq0Configure2: ; {{{
         ldx     #APU_SQ_DUTY_QUARTER_NEG | 15
         ldy     #APU_SQ_SWEEP_ENABLE | (1<<4) | APU_SQ_SWEEP_NEGATE | 4
         jmp     Sq0ConfigureGo
+; }}}
 
-Sq0Configure3:
+Sq0Configure3: ; {{{
         ldx     #APU_SQ_DUTY_HALF | 15
         ldy     #(2<<4) | 6
         jmp     Sq0ConfigureGo
+; }}}
 
-Sq0Configure4:
+Sq0Configure4: ; {{{
         ldx     #APU_SQ_DUTY_EIGHTH | 15
         ldy     #APU_SQ_SWEEP_ENABLE | (0<<4) | 7
         jmp     Sq0ConfigureGo
+; }}}
 
-Sq0Configure5:
+Sq0Configure5: ; {{{
         ldx     #APU_SQ_DUTY_QUARTER_NEG | 15
         ldy     #(5<<4) | 7
         jmp     Sq0ConfigureGo
+; }}}
 
 Sq0ConfigureGo: ; {{{
         stx     apu_sq0
