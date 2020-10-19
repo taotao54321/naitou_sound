@@ -1026,32 +1026,32 @@ sq0_configure_funcs: ; {{{
 Sq0Configure0:
         ldx     #APU_SQ_DUTY_QUARTER_NEG | 15
         ldy     #0
-        jmp	Sq0ConfigureGo
+        jmp     Sq0ConfigureGo
 
 Sq0Configure1:
         ldx     #APU_SQ_DUTY_QUARTER_NEG | 15
         ldy     #APU_SQ_SWEEP_ENABLE | (4<<4) | 2
-        jmp	Sq0ConfigureGo
+        jmp     Sq0ConfigureGo
 
 Sq0Configure2:
         ldx     #APU_SQ_DUTY_QUARTER_NEG | 15
         ldy     #APU_SQ_SWEEP_ENABLE | (1<<4) | APU_SQ_SWEEP_NEGATE | 4
-        jmp	Sq0ConfigureGo
+        jmp     Sq0ConfigureGo
 
 Sq0Configure3:
         ldx     #APU_SQ_DUTY_HALF | 15
         ldy     #(2<<4) | 6
-        jmp	Sq0ConfigureGo
+        jmp     Sq0ConfigureGo
 
 Sq0Configure4:
         ldx     #APU_SQ_DUTY_EIGHTH | 15
         ldy     #APU_SQ_SWEEP_ENABLE | (0<<4) | 7
-        jmp	Sq0ConfigureGo
+        jmp     Sq0ConfigureGo
 
 Sq0Configure5:
         ldx     #APU_SQ_DUTY_QUARTER_NEG | 15
         ldy     #(5<<4) | 7
-        jmp	Sq0ConfigureGo
+        jmp     Sq0ConfigureGo
 
 Sq0ConfigureGo: ; {{{
         stx     apu_sq0
